@@ -1,0 +1,28 @@
+{
+  "build": {
+    "core": "stm32",
+    "cpu": "cortex-m7",
+    "extra_flags": "-DSTM32H7xx -DSTM32H753xx -DCORE_CM7",
+    "f_cpu": "480000000L",
+    "mcu": "stm32h753vit6",
+    "product_line": "STM32H753xx",
+    "variant": "H753VIT6_Custom"
+  },
+  "connectivity": ["ethernet"],
+  "debug": {
+    "default_tools": ["stlink"],
+    "jlink_device": "STM32H753VI",
+    "openocd_target": "stm32h7x",
+    "svd_path": "STM32H753x.svd"
+  },
+  "frameworks": ["arduino", "cmsis", "stm32cube"],
+  "name": "Cornell Racing Ethernet Switch Rev1 (STM32H753VIT6 + KSZ9477)",
+  "upload": {
+    "maximum_ram_size": 524288,
+    "maximum_size": 2097152,
+    "protocol": "dfu",
+    "protocols": ["dfu", "stlink", "jlink", "serial", "mbed"]
+  },
+  "url": "https://github.com/TeddyD-2/CR_EthernetSwitch_rev1",
+  "vendor": "Cornell Racing"
+}
