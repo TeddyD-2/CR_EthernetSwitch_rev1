@@ -6,7 +6,11 @@
     "f_cpu": "480000000L",
     "mcu": "stm32h753vit6",
     "product_line": "STM32H753xx",
-    "variant": "H753VIT6_Custom"
+    "variant": "H753VIT6_Custom",
+    "arduino": {
+      "board": "H753VIT6_CUSTOM",
+      "variant_h": "variant_H753VIT6_CUSTOM.h"
+    }
   },
   "connectivity": ["ethernet"],
   "debug": {

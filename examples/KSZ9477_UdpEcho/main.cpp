@@ -121,7 +121,6 @@ void loop()
   bool udpActive = (int32_t)(udpHoldUntil - now) > 0;
 
   digitalWrite(LED_G1, udpActive ? HIGH : LOW);
-  digitalWrite(LED_G2, udpActive ? HIGH : LOW);
 
   static uint32_t lastBeat = 0;
   if (now - lastBeat >= 250) {
