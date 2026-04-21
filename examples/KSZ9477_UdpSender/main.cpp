@@ -1,145 +1,103 @@
 /*
   KSZ9477_UdpSender — STM32 transmits UDP packets out through the switch.
 
-  Brings up the KSZ9477, starts STM32Ethernet at 192.168.1.100, and sends
-  a UDP packet containing a counter + millis() timestamp once per second
-  to 192.168.1.255:5001 (subnet broadcast, so any PC on 192.168.1.0/24
-  will receive it regardless of its specific IP).
+  Brings up the switch, starts the TCP/IP stack, and sends a UDP packet
+  containing a counter + millis() timestamp once per SEND_PERIOD_MS to
+  DST_IP:DST_PORT.
 
-  How to receive on your PC (PC at 192.168.1.x/24, plugged into any KSZ
-  front port):
+  Default DST_IP is the subnet broadcast (192.168.1.255) so any PC on
+  192.168.1.0/24 will receive it. Listen on the PC:
 
-      python -c "import socket s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-      s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-      s.bind(('',5001))
-      while True: print(s.recvfrom(512))"
-
-  Or with netcat:   nc -ul 5001
+      python -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);\
+                 s.bind(('',5001));\
+                 while True: print(s.recvfrom(512))"
 */
 
 #include <Arduino.h>
 #include <KSZ9477.h>
 
-// ---- Link speed -----------------------------------------------------------
-// Max PHY link speed advertised by ports 1..5 during auto-negotiation.
-// One of: 10, 100, 1000. Auto-neg still runs — the advertisement is just
-// restricted so the link partner picks a speed at or below the cap.
-// In tri-color dual-LED mode (Table 4-4): 1000 = LEDx_1 only, 100 = LEDx_0
-// only, 10 = both LEDs. Forcing 100 or 10 is a useful visual check that
-// LEDx_0 and its magjack wiring are healthy.
-#define LINK_SPEED_CAP 10
-
-static void capPortSpeed(KSZ9477 &sw, uint8_t port, uint16_t maxMbps)
-{
-  const uint32_t base = (uint32_t)port << 12;
-
-  uint16_t ctrl1000 = sw.readReg16(base | 0x0112);
-  if (maxMbps >= 1000) ctrl1000 |=  ((1u << 9) | (1u << 8));
-  else                 ctrl1000 &= ~((1u << 9) | (1u << 8));
-  sw.writeReg16(base | 0x0112, ctrl1000);
-
-  uint16_t anar = sw.readReg16(base | 0x0108);
-  if (maxMbps >= 100) anar |=  ((1u << 8) | (1u << 7));
-  else                anar &= ~((1u << 8) | (1u << 7));
-  anar |= (1u << 6) | (1u << 5);
-  sw.writeReg16(base | 0x0108, anar);
-
-  uint16_t bmcr = sw.readReg16(base | 0x0100);
-  bmcr |= (1u << 9);
-  sw.writeReg16(base | 0x0100, bmcr);
-}
-
-// ---- KSZ9477 SPI + control pins -------------------------------------------
-#define KSZ_SCK    PA5
-#define KSZ_MISO   PA6
-#define KSZ_MOSI   PD7
-#define KSZ_CS     PB2
-#define KSZ_RST    PE7
-#define KSZ_INT    PB0
-
-// ---- User LEDs ------------------------------------------------------------
-#define LED_R1     PD1
-#define LED_G1     PD2
-#define LED_R2     PD3
-#define LED_G2     PD4
+// ============================================================================
+// User configuration
+// ============================================================================
 
 // ---- Network --------------------------------------------------------------
-static uint8_t   mac[]   = { 0x02, 0x00, 0x11, 0x22, 0x33, 0x45 };
-static IPAddress ip      (192, 168, 1, 100);
-static IPAddress gw      (192, 168, 1,   1);
-static IPAddress mask    (255, 255, 255, 0);
-static IPAddress dstIp   (192, 168, 1, 255);   // subnet broadcast
-static const uint16_t DST_PORT = 5001;
+static uint8_t   mac[]    = { 0x02, 0x00, 0x11, 0x22, 0x33, 0x45 };
+static IPAddress localIp  (192, 168, 1, 100);
+static IPAddress gateway  (192, 168, 1,   1);
+static IPAddress netmask  (255, 255, 255, 0);
+static IPAddress dstIp    (192, 168, 1, 255);   // subnet broadcast
+static const uint16_t DST_PORT       = 5001;
+static const uint32_t SEND_PERIOD_MS = 1000;
+
+// ---- PHY link -------------------------------------------------------------
+// Max speed advertised on ports 1..5 during auto-negotiation.
+// One of: 10, 100, 1000.
+#define LINK_SPEED_CAP 100
+
+// Magjack LED behavior (KSZ9477S datasheet 4.2):
+//   KSZ9477::LED_SINGLE        — LEDx_1 = Link, LEDx_0 = Activity
+//   KSZ9477::LED_DUAL_TRICOLOR — 1000=LEDx_1, 100=LEDx_0, 10=both
+#define LED_MODE  KSZ9477::LED_DUAL_TRICOLOR
+
+// ---- KSZ9477 SPI + control pins (board-specific) --------------------------
+#define KSZ_SCK   PA5
+#define KSZ_MISO  PA6
+#define KSZ_MOSI  PD7   // PA7 is ETH_CRS_DV, so MOSI is remapped
+#define KSZ_CS    PB2
+#define KSZ_RST   PE7
+#define KSZ_INT   PB0
+
+// ============================================================================
 
 KSZ9477     sw;
 EthernetUDP udp;
 
 void setup()
 {
-  pinMode(LED_R1, OUTPUT); pinMode(LED_G1, OUTPUT);
-  pinMode(LED_R2, OUTPUT); pinMode(LED_G2, OUTPUT);
-
   Serial.begin(115200);
   while (!Serial && millis() < 3000) {}
-
-  Serial.println();
-  Serial.println("=== KSZ9477 UDP Sender ===");
+  Serial.println("\n=== KSZ9477 UDP Sender ===");
 
   sw.setPins(KSZ_SCK, KSZ_MISO, KSZ_MOSI, KSZ_CS, KSZ_RST, KSZ_INT);
   if (!sw.begin()) {
-    Serial.println("KSZ did not respond.");
-    digitalWrite(LED_R1, HIGH);
+    Serial.println("KSZ9477 not responding — halting.");
     while (1) {}
   }
-  Serial.print("Chip ID   : 0x"); Serial.println(sw.chipId(), HEX);
 
-  sw.configureCpuPort();
+  sw.configureCpuPort();                  // RMII 100 FD, KSZ drives REFCLKO6
   sw.startSwitch();
-  sw.configureLeds(KSZ9477::LED_DUAL_TRICOLOR);
+  sw.configureLeds(LED_MODE);
+  sw.setSpeedCap(LINK_SPEED_CAP);
 
-  for (uint8_t p = 1; p <= 5; p++) capPortSpeed(sw, p, LINK_SPEED_CAP);
-  Serial.print("PHY ports 1..5 capped at ");
-  Serial.print(LINK_SPEED_CAP); Serial.println(" Mbps");
-
-  Ethernet.begin(mac, ip, gw, gw, mask);
-  udp.begin(DST_PORT);      // needed to allocate a pcb for sending
-  sw.reinitSpi();           // HAL_ETH_MspInit may re-mux PA5/PA6
+  Ethernet.begin(mac, localIp, gateway, gateway, netmask);
+  udp.begin(DST_PORT);                    // allocates a pcb for sending
+  sw.reinitSpi();                         // HAL_ETH_MspInit may re-mux PA5/PA6
 
   Serial.print("Sending from ");
   Serial.print(Ethernet.localIP());
   Serial.print(" -> ");
-  Serial.print(dstIp);
-  Serial.print(":");
-  Serial.println(DST_PORT);
+  Serial.print(dstIp); Serial.print(":"); Serial.println(DST_PORT);
 }
 
 void loop()
 {
   static uint32_t lastSend = 0;
   static uint32_t counter  = 0;
+
   uint32_t now = millis();
+  if (now - lastSend < SEND_PERIOD_MS) return;
+  lastSend = now;
+  counter++;
 
-  if (now - lastSend >= 1000) {
-    lastSend = now;
-    counter++;
+  char msg[64];
+  int n = snprintf(msg, sizeof(msg), "hello #%lu t=%lums\n",
+                   (unsigned long)counter, (unsigned long)now);
 
-    char msg[64];
-    int n = snprintf(msg, sizeof(msg), "hello #%lu t=%lums\n",
-                     (unsigned long)counter, (unsigned long)now);
+  udp.beginPacket(dstIp, DST_PORT);
+  udp.write((const uint8_t*)msg, n);
+  int ok = udp.endPacket();
 
-    udp.beginPacket(dstIp, DST_PORT);
-    udp.write((const uint8_t*)msg, n);
-    int ok = udp.endPacket();
-
-    digitalWrite(LED_G1, !digitalRead(LED_G1));
-    Serial.print("[tx] "); Serial.print(ok ? "OK " : "FAIL ");
-    Serial.print(n); Serial.print(" B: ");
-    Serial.print(msg);
-  }
-
-  static uint32_t lastBeat = 0;
-  if (now - lastBeat >= 250) {
-    lastBeat = now;
-    digitalWrite(LED_R2, !digitalRead(LED_R2));
-  }
+  Serial.print("[tx] "); Serial.print(ok ? "OK " : "FAIL ");
+  Serial.print(n);       Serial.print(" B: ");
+  Serial.print(msg);
 }

@@ -197,6 +197,47 @@ bool KSZ9477::linkUp(uint8_t port)
 }
 
 // ---------------------------------------------------------------------------
+// Auto-negotiation speed cap (KSZ9477S datasheet section 4.1, Table 5-10)
+//
+//   PHY Basic Control          (BMCR)  @ 0xN100 — bit 9 = restart AN
+//   PHY Auto-Neg Advertisement (ANAR)  @ 0xN108 — bits 8,7 = 100-FD/HD adv
+//                                                 bits 6,5 = 10-FD/HD  adv
+//   PHY 1000BASE-T Control              @ 0xN112 — bits 9,8 = 1000-FD/HD adv
+// ---------------------------------------------------------------------------
+void KSZ9477::setPortSpeedCap(uint8_t port, uint16_t maxMbps)
+{
+  if (port < 1 || port > 5) return;
+
+  const uint32_t base = portBase(port);
+
+  // 1000BASE-T Control: advertise 1000-FD/HD only if cap >= 1000.
+  uint16_t ctrl1000 = readReg16(base + 0x0112);
+  if (maxMbps >= 1000) ctrl1000 |=  ((1u << 9) | (1u << 8));
+  else                 ctrl1000 &= ~((1u << 9) | (1u << 8));
+  writeReg16(base + 0x0112, ctrl1000);
+
+  // ANAR: advertise 100-FD/HD only if cap >= 100. Always advertise 10-FD/HD
+  // so there is always a fallback speed to negotiate to.
+  uint16_t anar = readReg16(base + 0x0108);
+  if (maxMbps >= 100) anar |=  ((1u << 8) | (1u << 7));
+  else                anar &= ~((1u << 8) | (1u << 7));
+  anar |= (1u << 6) | (1u << 5);
+  writeReg16(base + 0x0108, anar);
+
+  // Restart auto-negotiation so the new advertisement takes effect.
+  uint16_t bmcr = readReg16(base + 0x0100);
+  bmcr |= (1u << 9);
+  writeReg16(base + 0x0100, bmcr);
+}
+
+void KSZ9477::setSpeedCap(uint16_t maxMbps)
+{
+  for (uint8_t port = 1; port <= 5; port++) {
+    setPortSpeedCap(port, maxMbps);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LED configuration
 //
 // Background (KSZ9477S datasheet section 4.2, tables 4-3 and 4-4):

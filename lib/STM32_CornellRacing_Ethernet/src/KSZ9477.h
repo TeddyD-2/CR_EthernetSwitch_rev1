@@ -138,6 +138,20 @@ public:
   // Double-reads internally to get past the IEEE 802.3 latch-low quirk.
   bool linkUp(uint8_t port);
 
+  // Cap the link speed advertised by a single PHY port during auto-negotiation.
+  // `maxMbps` must be 10, 100, or 1000. Auto-neg still runs — the advertisement
+  // is just restricted so the link partner picks a speed at or below the cap.
+  // Touches PHY reg 9 (1000BASE-T Control, 0xN112) and reg 4 (ANAR, 0xN108),
+  // then restarts auto-neg via BMCR (reg 0, 0xN100) bit 9. Datasheet section
+  // 4.1 auto-negotiation and the PHY register map in section 5.2.
+  //
+  // 10-FD/HD advertisement is always left on so there is always a fallback
+  // speed the partner can negotiate to.
+  void setPortSpeedCap(uint8_t port, uint16_t maxMbps);
+
+  // Convenience: apply setPortSpeedCap() to all five PHY ports (1..5).
+  void setSpeedCap(uint16_t maxMbps);
+
   // --------- LED control ---------------------------------------------------
   // Program the magjack LEDs on all 5 PHY ports to a known-good default
   // (Single-LED mode: LEDx_1 = Link, LEDx_0 = Activity). Also clears the
