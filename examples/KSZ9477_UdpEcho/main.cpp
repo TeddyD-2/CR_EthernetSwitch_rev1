@@ -46,6 +46,13 @@ static const uint16_t LOCAL_PORT = 5000;
 #define KSZ_RST   PE7
 #define KSZ_INT   PB0
 
+// ---- Status LEDs (board-specific) -----------------------------------------
+// LED_HEARTBEAT toggles every HEARTBEAT_MS — liveness indicator.
+// LED_RX        toggles on every echoed UDP packet — RX activity indicator.
+#define LED_HEARTBEAT PD3
+#define LED_RX        PD2
+static const uint32_t HEARTBEAT_MS = 250;
+
 // ============================================================================
 
 KSZ9477     sw;
@@ -54,6 +61,9 @@ static uint8_t packetBuf[512];
 
 void setup()
 {
+  pinMode(LED_HEARTBEAT, OUTPUT);
+  pinMode(LED_RX,        OUTPUT);
+
   Serial.begin(115200);
   while (!Serial && millis() < 3000) {}
   Serial.println("\n=== KSZ9477 UDP Echo ===");
@@ -81,6 +91,15 @@ void setup()
 
 void loop()
 {
+  uint32_t now = millis();
+
+  // Heartbeat
+  static uint32_t lastBeat = 0;
+  if (now - lastBeat >= HEARTBEAT_MS) {
+    lastBeat = now;
+    digitalWrite(LED_HEARTBEAT, !digitalRead(LED_HEARTBEAT));
+  }
+
   int size = udp.parsePacket();
   if (size <= 0) return;
 
@@ -88,6 +107,7 @@ void loop()
   udp.beginPacket(udp.remoteIP(), udp.remotePort());
   udp.write(packetBuf, n);
   udp.endPacket();
+  digitalWrite(LED_RX, !digitalRead(LED_RX));
 
   Serial.print("[echo] ");  Serial.print(n);
   Serial.print(" B from "); Serial.print(udp.remoteIP());

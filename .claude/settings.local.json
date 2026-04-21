@@ -3,7 +3,11 @@
     "allow": [
       "Bash(pdftotext -layout -f 1 -l 5 \"C:/Users/teddy/Downloads/KSZ9477S-Data-Sheet-DS00002392C.pdf\" -)",
       "Bash(pdftotext -layout \"C:/Users/teddy/Downloads/KSZ9477S-Data-Sheet-DS00002392C.pdf\" /tmp/ksz.txt)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(where pdftotext *)",
+      "Bash(pdftotext -layout \"C:/Users/teddy/Downloads/KSZ9477S-Data-Sheet-DS00002392C.pdf\" \"C:/Users/teddy/Downloads/ksz9477.txt\")",
+      "Bash(pdftotext -raw \"C:/Users/teddy/Downloads/KSZ9477S-Data-Sheet-DS00002392C.pdf\" \"C:/Users/teddy/Downloads/ksz9477_raw.txt\")",
+      "Bash(awk 'NR>=1555 && NR<=1620' \"C:/Users/teddy/Downloads/ksz9477_raw.txt\")"
     ]
   }
 }

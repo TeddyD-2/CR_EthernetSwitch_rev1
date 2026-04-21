@@ -282,11 +282,23 @@ void KSZ9477::setPortLedMode(uint8_t port, LedMode mode)
   // MMD device 2, register 0x00, bit 4 = LED mode.
   //   0 = Tri-Color Dual-LED (default)
   //   1 = Single-LED
-  // Lower nibble of this register has a reserved default of 0b0001 per
-  // datasheet; we OR that in so we don't trample it.
-  uint16_t val = 0x0001;
-  if (mode == LED_SINGLE) { val |= (1u << 4); }
-  writePhyMmd(port, /*dev*/ 2, /*reg*/ 0x0000, val);
+  // Datasheet §5.4.5 example writes 0x0010 to enable single-LED mode.
+  writePhyMmd(port, /*dev*/ 2, /*reg*/ 0x0000,
+              (mode == LED_SINGLE) ? 0x0010 : 0x0000);
+
+  // Silicon erratum (KSZ9897R DS80000758F / KSZ9567S DS80000756E Module 15,
+  // "Single-LED Mode Setting Requires Two Register Writes"): setting bit 4
+  // of MMD2/0 alone does NOT actually route the Activity signal to LEDx_0 —
+  // LEDx_0 stays dark on traffic. Bit 9 of PHY reg 0x1E (at 0xN13C-0xN13D)
+  // must also be set. Because the 0xN120..0xN13F window requires 32-bit
+  // accesses on this chip, the workaround is a single 32-bit write of
+  // 0xFA00_0300 to 0xN13C: PHY reg 0x1E <- 0xFA00 (bit 9 set), and at the
+  // same time PHY reg 0x1F <- 0x0300 (the value Microchip specifies to
+  // preserve sensible state in reg 0x1F while updating 0x1E). Apply only
+  // in single-LED mode.
+  if (mode == LED_SINGLE) {
+    writeReg32(portBase(port) + 0x013C, 0xFA000300UL);
+  }
 }
 
 // ---- LED diagnostics -------------------------------------------------------

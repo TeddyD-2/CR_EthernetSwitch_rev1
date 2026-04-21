@@ -162,6 +162,13 @@ public:
   // Hardware note: KSZ LED outputs are active-low, 8 mA open-drain-ish. Wire
   // the LED anode to VDDIO via a 220-470 Ω resistor, cathode to the LEDx_y
   // pin.
+  //
+  // Erratum note (single-LED mode): setting MMD2/reg0/bit4 alone does NOT
+  // route the Activity signal to LEDx_0 — LEDx_0 stays dark on traffic.
+  // Microchip errata Module 15 (KSZ9897R DS80000758F, KSZ9567S DS80000756E;
+  // same PHY silicon as KSZ9477S) requires also setting bit 9 of PHY reg
+  // 0x1E per port. setPortLedMode() handles this automatically when
+  // switching into LED_SINGLE.
   void configureLeds(LedMode mode = LED_SINGLE);
 
   // Change the LED mode for a single PHY port (1..5). Use configureLeds()
