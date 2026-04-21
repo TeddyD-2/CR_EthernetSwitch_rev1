@@ -21,19 +21,29 @@
 #include <KSZ9477.h>
 
 // ---- Link speed -----------------------------------------------------------
-// Set to 1 to cap PHY ports 1..5 at 100 Mbps full-duplex. Auto-negotiation
-// still runs, but the 1000BASE-T advertisement is withdrawn. In tri-color
-// dual-LED mode this lights LEDx_0 for link/activity; at 1000 Mbps LEDx_0
-// stays off, so forcing 100 is a useful visual confirmation that the LED_0
-// pins and their magjack wiring are healthy.
-#define FORCE_100_MBPS 1
+// Max PHY link speed advertised by ports 1..5 during auto-negotiation.
+// One of: 10, 100, 1000. Auto-neg still runs — the advertisement is just
+// restricted so the link partner picks a speed at or below the cap.
+// In tri-color dual-LED mode (Table 4-4): 1000 = LEDx_1 only, 100 = LEDx_0
+// only, 10 = both LEDs. Forcing 100 or 10 is a useful visual check that
+// LEDx_0 and its magjack wiring are healthy.
+#define LINK_SPEED_CAP 10
 
-static void capPortTo100Mbps(KSZ9477 &sw, uint8_t port)
+static void capPortSpeed(KSZ9477 &sw, uint8_t port, uint16_t maxMbps)
 {
   const uint32_t base = (uint32_t)port << 12;
+
   uint16_t ctrl1000 = sw.readReg16(base | 0x0112);
-  ctrl1000 &= ~((1u << 9) | (1u << 8));
+  if (maxMbps >= 1000) ctrl1000 |=  ((1u << 9) | (1u << 8));
+  else                 ctrl1000 &= ~((1u << 9) | (1u << 8));
   sw.writeReg16(base | 0x0112, ctrl1000);
+
+  uint16_t anar = sw.readReg16(base | 0x0108);
+  if (maxMbps >= 100) anar |=  ((1u << 8) | (1u << 7));
+  else                anar &= ~((1u << 8) | (1u << 7));
+  anar |= (1u << 6) | (1u << 5);
+  sw.writeReg16(base | 0x0108, anar);
+
   uint16_t bmcr = sw.readReg16(base | 0x0100);
   bmcr |= (1u << 9);
   sw.writeReg16(base | 0x0100, bmcr);
@@ -87,10 +97,9 @@ void setup()
   sw.startSwitch();
   sw.configureLeds(KSZ9477::LED_DUAL_TRICOLOR);
 
-#if FORCE_100_MBPS
-  for (uint8_t p = 1; p <= 5; p++) capPortTo100Mbps(sw, p);
-  Serial.println("PHY ports 1..5 capped to 100 Mbps FD");
-#endif
+  for (uint8_t p = 1; p <= 5; p++) capPortSpeed(sw, p, LINK_SPEED_CAP);
+  Serial.print("PHY ports 1..5 capped at ");
+  Serial.print(LINK_SPEED_CAP); Serial.println(" Mbps");
 
   Ethernet.begin(mac, ip, gw, gw, mask);
   udp.begin(DST_PORT);      // needed to allocate a pcb for sending
