@@ -15,6 +15,25 @@
 #include <Arduino.h>
 #include <KSZ9477.h>     // also pulls in STM32Ethernet + LwIP
 
+// ---- Link speed -----------------------------------------------------------
+// Set to 1 to cap PHY ports 1..5 at 100 Mbps full-duplex. Auto-negotiation
+// still runs, but the 1000BASE-T advertisement is withdrawn. In tri-color
+// dual-LED mode this lights LEDx_0 for link/activity; at 1000 Mbps LEDx_0
+// stays off, so forcing 100 is a useful visual confirmation that the LED_0
+// pins and their magjack wiring are healthy.
+#define FORCE_100_MBPS 1
+
+static void capPortTo100Mbps(KSZ9477 &sw, uint8_t port)
+{
+  const uint32_t base = (uint32_t)port << 12;
+  uint16_t ctrl1000 = sw.readReg16(base | 0x0112);
+  ctrl1000 &= ~((1u << 9) | (1u << 8));
+  sw.writeReg16(base | 0x0112, ctrl1000);
+  uint16_t bmcr = sw.readReg16(base | 0x0100);
+  bmcr |= (1u << 9);
+  sw.writeReg16(base | 0x0100, bmcr);
+}
+
 // ---- KSZ9477 SPI + control pins -------------------------------------------
 // SPI1 (MOSI remapped to PD7 because PA7 is ETH_CRS_DV)
 #define KSZ_SCK    PA5
@@ -66,7 +85,12 @@ void setup()
   sw.configureCpuPort();   // RMII 100 FD, KSZ drives REFCLKO6
   sw.startSwitch();
 
-  sw.configureLeds(KSZ9477::LED_SINGLE);
+  sw.configureLeds(KSZ9477::LED_DUAL_TRICOLOR);
+
+#if FORCE_100_MBPS
+  for (uint8_t p = 1; p <= 5; p++) capPortTo100Mbps(sw, p);
+  Serial.println("PHY ports 1..5 capped to 100 Mbps FD");
+#endif
 
   Serial.print("LED Override (0x0120): 0x"); Serial.println(sw.ledOverrideRegister(), HEX);
   Serial.print("LED Output   (0x0124): 0x"); Serial.println(sw.ledOutputRegister(), HEX);
