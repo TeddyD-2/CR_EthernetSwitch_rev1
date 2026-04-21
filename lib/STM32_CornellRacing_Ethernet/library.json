@@ -1,15 +1,21 @@
 {
-  "name": "STM32Ethernet",
-  "keywords": "Ethernet",
-  "description": "Arduino library to support Ethernet for STM32 based board.",
-  "repository":
-  {
-    "type": "git",
-    "url": "https://github.com/stm32duino/STM32Ethernet"
+  "name": "STM32 CornellRacing Ethernet",
+  "version": "1.5.1-h7",
+  "description": "KSZ9477 managed-switch driver + STM32Ethernet fork with H7 HAL ETH fixes, MAC-to-MAC mode, and DMA buffers at D2 SRAM 0x30040000.",
+  "keywords": "ethernet, stm32, stm32h7, ksz9477, lwip",
+  "authors": {
+    "name": "Cornell Racing",
+    "maintainer": true
   },
-  "version": "1.4.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TeddyD-2/CR_EthernetSwitch_rev1"
+  },
   "frameworks": "arduino",
   "platforms": "ststm32",
+  "dependencies": {
+    "stm32duino/STM32duino LwIP": "*"
+  },
   "build": {
     "libArchive": false
   }

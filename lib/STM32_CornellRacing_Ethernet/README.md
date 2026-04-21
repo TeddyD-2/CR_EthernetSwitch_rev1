@@ -46,17 +46,7 @@ See `examples/` for two complete sketches:
 
 ## Board package
 
-The board variant + linker script are **not** in this library — they have to live under `%LOCALAPPDATA%` where the Arduino STM32 core looks for variants. They live in a separate folder:
-
-```
-Documents\Arduino\custom_boards\CR_EthernetSwitchRev1_STM32H753VIT6\
-```
-
-Run `install.ps1` from that folder once (and again after every Arduino IDE / STM32 core update). See its `README.md` for details.
-
-After install, the IDE shows:
-
-> **Tools → Board → STM32 MCU based boards → Cornell Racing Ethernet Switch: STM32H753VIT6**
+The board variant + linker script live alongside this library under `board/variants/H753VIT6_Custom/` in the parent PlatformIO project. `platformio.ini` wires them in via `board_build.variants_dir` and `board_build.ldscript`; no install step.
 
 ## STM32H7 + KSZ9477 driver notes
 
@@ -85,7 +75,7 @@ If you need to override the MPU config (e.g. you already use D2 SRAM for other D
 
 ### Forced speed / duplex
 
-Define before including `STM32Ethernet.h` (or in `build_opt.h`) to override the defaults:
+Define before including `STM32Ethernet.h` (or as `-D` entries in `platformio.ini → build_flags`) to override the defaults:
 
 ```cpp
 #define ETHERNETIF_H7_FORCED_SPEED   ETH_SPEED_10M       // default: ETH_SPEED_100M
@@ -105,10 +95,9 @@ An idle task drives the LwIP stack from a 1 ms timer callback (`stm32_eth_schedu
 
 ## Bring-up checklist
 
-1. Install the board package (`custom_boards\STM32H753VIT6_CornellRacing\install.ps1`) and select the board in the IDE.
-2. Flash `examples/KSZ9477_UdpEcho`. Serial should print `Chip ID : 0x9477` and `Listening on udp://192.168.1.100:5000`.
-3. From a PC on `192.168.1.50/24` plugged into any KSZ front port, `ping 192.168.1.100` should reply within 2–3 s of boot.
-4. Send a UDP packet to port 5000 — the sketch echoes it back and pulses the green status LEDs.
+1. `pio run -e example_udpecho -t upload`. Serial should print `Chip ID : 0x9477` and `Listening on udp://192.168.1.100:5000`.
+2. From a PC on `192.168.1.50/24` plugged into any KSZ front port, `ping 192.168.1.100` should reply within 2–3 s of boot.
+3. Send a UDP packet to port 5000 — the sketch echoes it back and pulses the green status LEDs.
 
 If LEDs misbehave, run `examples/KSZ9477_LedPolarityTest` — it prints per-port LED-mode register state, BMSR for each PHY, watches link-up timing, and walks LED polarity so you can confirm magjack wiring.
 
